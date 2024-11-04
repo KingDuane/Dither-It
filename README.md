@@ -1,7 +1,6 @@
 # 0xdither - Realtime Camera Dithering
 
 Dithering Algorithms = Left and Right Swipe / Arrows
-
 Pixel Density = Up and Down Swipe / Arrows
 
 ```
