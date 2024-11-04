@@ -1,15 +1,29 @@
 # 0xdither - Realtime Camera Dithering
 
-Dithering Algorithms = Left and Right Swipe / Arrows
+Floyd-Steinberg 
+Jarvis-Judice-Ninke 
+Atkinson 
+Stucki 
+Burkes 
+Bayer
 
-Pixel Density = Up and Down Swipe / Arrows
+—
+
+
+index.html
+
+Change Dither Algorithm = Left and Right Swipe / Arrows
+
+Change Dither Density = Up and Down Swipe / Arrows
+
+—
 
 
 rgb.html
 
 Black and White / RGB Mode = Tap or Click
 
-
+—
 ```
                     @         @                 @@@@@       @         @@@@@@@@@@
                   @@@       @@@             @@@@@@@@@@@@@   @@@       @@@@@@@@@@
