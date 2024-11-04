@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>0xdither</title>
     
-    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI-CiAgPHJlY3Qgd2lkdGg9IjEyIiBoZWlnaHQ9IjEyIiB4PSIwIiB5PSIwIiBmaWxsPSJibGFjayIvPgogIDxyZWN0IHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgeD0iMTIiIHk9IjEyIiBmaWxsPSJibGFjayIvPgo8L3N2Zz4">
 
     <style>
@@ -180,7 +179,6 @@
                 new Array(width).fill(0).map(() => ({ r: 0, g: 0, b: 0 }))
             );
             
-            // Copy data to buffer
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width; x++) {
                     const idx = (y * width + x) * 4;
@@ -192,7 +190,6 @@
                 }
             }
 
-            // Process pixels
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width; x++) {
                     const channels = isColorMode ? ['r', 'g', 'b'] : ['r'];
@@ -224,7 +221,6 @@
                 }
             }
 
-            // Copy buffer back to data
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width; x++) {
                     const idx = (y * width + x) * 4;
@@ -307,7 +303,6 @@
             }
         });
 
-        // Add click handler for color mode toggle
         canvas.addEventListener('click', () => {
             isColorMode = !isColorMode;
             showInfo();
@@ -338,7 +333,6 @@
             }
         });
 
-        // Prevent default touch behaviors
         canvas.addEventListener('touchmove', (e) => e.preventDefault());
 
         initCamera();
