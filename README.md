@@ -4,6 +4,9 @@ Dithering Algorithms = Left and Right Swipe / Arrows
 
 Pixel Density = Up and Down Swipe / Arrows
 
+Black and White / RGB Mode = Tap or Click
+
+
 ```
                     @         @                 @@@@@       @         @@@@@@@@@@
                   @@@       @@@             @@@@@@@@@@@@@   @@@       @@@@@@@@@@
