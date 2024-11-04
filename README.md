@@ -46,4 +46,4 @@ Change Dither Density - Up / Down Swipe or Arrows
 
 rgb.html
 
-Black and White / RGB Mode = Tap or Click
+Black & White / RGB Mode - Tap or Click
