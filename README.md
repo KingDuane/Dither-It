@@ -41,9 +41,4 @@ Change Dither Algorithm - Left / Right Swipe or Arrows
 
 Change Dither Density - Up / Down Swipe or Arrows
 
-—
-
-
-rgb.html
-
 Black & White / RGB Mode - Tap or Click
