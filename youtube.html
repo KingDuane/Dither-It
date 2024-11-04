@@ -36,17 +36,16 @@
         #video {
             display: none;
         }
-        #youtube {
+        #youtube-container {
             position: fixed;
             top: 0;
             left: 0;
             width: 100vw;
             height: 100vh;
-            opacity: 0;
             pointer-events: none;
+            opacity: 0;
         }
     </style>
-    <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
     <div id="info">
@@ -54,8 +53,8 @@
         Pixel Size: <span id="pixelSize">1x</span><br>
         Mode: <span id="colorMode">B&W</span>
     </div>
-    <video id="video" autoplay playsinline></video>
-    <div id="youtube"></div>
+    <video id="video" autoplay playsinline crossorigin="anonymous"></video>
+    <div id="youtube-container"></div>
     <canvas id="canvas"></canvas>
     <script>
         const canvas = document.getElementById('canvas');
@@ -65,97 +64,61 @@
         const infoPixel = document.getElementById('pixelSize');
         const infoColor = document.getElementById('colorMode');
         let video = document.getElementById('video');
-        let player = null;
         
-        // Extract YouTube video ID from URL if present
+        // Extract video URL from parameters
         const urlParams = new URLSearchParams(window.location.search);
-        const youtubeUrl = urlParams.get('youtube');
-        const youtubeId = youtubeUrl ? getYouTubeId(youtubeUrl) : null;
+        const videoUrl = urlParams.get('video');
 
-        function getYouTubeId(url) {
-            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-            const match = url.match(regExp);
-            return (match && match[2].length === 11) ? match[2] : null;
-        }
-
-        // YouTube player initialization
-        function onYouTubeIframeAPIReady() {
-            if (youtubeId) {
-                player = new YT.Player('youtube', {
-                    videoId: youtubeId,
-                    playerVars: {
-                        autoplay: 1,
-                        controls: 0,
-                        enablejsapi: 1,
-                        playsinline: 1,
-                        modestbranding: 1,
-                        mute: 1,
-                        loop: 1
-                    },
-                    events: {
-                        onReady: onPlayerReady,
-                        onStateChange: onPlayerStateChange
-                    }
-                });
-            } else {
-                initCamera();
-            }
-        }
-
-        function onPlayerReady(event) {
-            player.playVideo();
-            // Create a canvas to capture YouTube video frames
-            const videoElement = document.querySelector('#youtube iframe');
-            video = videoElement;
-            canvas.width = 1280;  // Set to standard YouTube size
-            canvas.height = 720;
-            requestAnimationFrame(processFrame);
-        }
-
-        function onPlayerStateChange(event) {
-            if (event.data === YT.PlayerState.ENDED) {
-                player.playVideo(); // Loop the video
-            }
-        }
-
-        // Initialize camera if no YouTube URL
-        async function initCamera() {
-            try {
-                video = document.getElementById('video');
-                const constraints = {
-                    video: {
-                        facingMode: 'user',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
-                };
-                
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
-                
-                // Wait for video to be ready
-                await new Promise((resolve) => {
-                    video.onloadedmetadata = () => {
-                        canvas.width = video.videoWidth;
-                        canvas.height = video.videoHeight;
-                        resolve();
-                    };
-                });
-                
+        // Initialize appropriate video source
+        async function initVideo() {
+            if (videoUrl) {
+                // Use video URL directly
+                video.src = videoUrl;
+                video.loop = true;
                 await video.play();
-                requestAnimationFrame(processFrame);
                 
-            } catch (err) {
-                console.error('Error accessing camera:', err);
+                // Set canvas size once video metadata is loaded
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    requestAnimationFrame(processFrame);
+                };
+            } else {
+                // Use camera
+                try {
+                    const constraints = {
+                        video: {
+                            facingMode: 'user',
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        }
+                    };
+                    
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    video.srcObject = stream;
+                    
+                    // Wait for video to be ready
+                    await new Promise((resolve) => {
+                        video.onloadedmetadata = () => {
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+                            resolve();
+                        };
+                    });
+                    
+                    await video.play();
+                    requestAnimationFrame(processFrame);
+                    
+                } catch (err) {
+                    console.error('Error accessing camera:', err);
+                }
             }
-        }
-
-        // Start the appropriate initialization based on URL params
-        if (!youtubeId) {
-            initCamera();
         }
 
         [... rest of the code remains exactly the same ...]
+
+        // Start the app
+        initVideo();
     </script>
 </body>
 </html>
