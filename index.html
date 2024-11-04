@@ -53,7 +53,6 @@
     </style>
 </head>
 <body>
-    <!-- Rest of the code remains the same -->
     <div id="container">
         <video id="video" autoplay playsinline></video>
         <canvas id="canvas"></canvas>
@@ -259,9 +258,9 @@
             } else {
                 if (Math.abs(diffY) > 50) {
                     if (diffY < 0) {
-                        currentScale = currentScale === 16 ? 1 : currentScale * 2;
+                        currentScale = currentScale === 64 ? 1 : currentScale * 2;
                     } else {
-                        currentScale = currentScale === 1 ? 16 : currentScale / 2;
+                        currentScale = currentScale === 1 ? 64 : currentScale / 2;
                     }
                     showInfo();
                 }
@@ -283,11 +282,11 @@
                     showInfo();
                     break;
                 case 'ArrowUp':
-                    currentScale = currentScale === 16 ? 1 : currentScale * 2;
+                    currentScale = currentScale === 64 ? 1 : currentScale * 2;
                     showInfo();
                     break;
                 case 'ArrowDown':
-                    currentScale = currentScale === 1 ? 16 : currentScale / 2;
+                    currentScale = currentScale === 1 ? 64 : currentScale / 2;
                     showInfo();
                     break;
             }
