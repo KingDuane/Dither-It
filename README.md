@@ -37,9 +37,9 @@ Bayer
 
 index.html
 
-Change Dither Algorithm = Left and Right Swipe / Arrows
+Change Dither Algorithm - Left / Right Swipe or Arrows
 
-Change Dither Density = Up and Down Swipe / Arrows
+Change Dither Density - Up / Down Swipe or Arrows
 
 —
 
