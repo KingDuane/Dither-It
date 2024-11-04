@@ -20,11 +20,16 @@
 ```
 # 0xdither - Realtime Camera Dithering
 
-Floyd-Steinberg 
+Floyd-Steinberg
+
 Jarvis-Judice-Ninke 
+
 Atkinson 
+
 Stucki 
+
 Burkes 
+
 Bayer
 
 —
