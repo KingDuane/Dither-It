@@ -56,7 +56,7 @@
     <div id="container">
         <video id="video" autoplay playsinline></video>
         <canvas id="canvas"></canvas>
-        <div id="info">Algorithm: Floyd-Steinberg | Scale: 1x | Mode: B&W</div>
+        <div id="info">Floyd-Steinberg | 1x | B&W</div>
     </div>
 
     <script>
@@ -150,7 +150,7 @@
         }
 
         function showInfo() {
-            info.textContent = `Algorithm: ${algorithms[currentAlgorithmIndex].name} | Scale: ${currentScale}x | Mode: ${isColorMode ? 'RGB' : 'B&W'}`;
+            info.textContent = `${algorithms[currentAlgorithmIndex].name} | ${currentScale}x | ${isColorMode ? 'RGB' : 'B&W'}`;
             info.classList.add('show-info');
             setTimeout(() => info.classList.remove('show-info'), 2000);
         }
