@@ -1,4 +1,4 @@
-# 0xdither - Real-time Camera Dithering
+# 0xdither - Realtime Camera Dithering
 
 ```
                     @         @                 @@@@@       @         @@@@@@@@@@
