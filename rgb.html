@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>0xdither</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+            touch-action: none;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            pointer-events: none;
+            font-size: 16px;
+            opacity: 1;
+            transition: opacity 0.5s ease;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 12px 16px;
+            border-radius: 30px;
+            line-height: 1.5;
+        }
+        #info.hidden {
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        Algorithm: <span id="algoName">Floyd-Steinberg</span><br>
+        Pixel Size: <span id="pixelSize">1x</span><br>
+        Mode: <span id="colorMode">B&W</span>
+    </div>
+    <video id="video" autoplay playsinline style="display: none;"></video>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const info = document.getElementById('info');
+        const infoAlgo = document.getElementById('algoName');
+        const infoPixel = document.getElementById('pixelSize');
+        const infoColor = document.getElementById('colorMode');
+        let video = document.getElementById('video');
+        
+        let currentAlgoIndex = 0;
+        let currentPixelSizeIndex = 0;
+        let isColorMode = false;
+        let infoTimeout;
+        
+        // Show info overlay and set timeout to hide it
+        function showInfo() {
+            clearTimeout(infoTimeout);
+            info.classList.remove('hidden');
+            infoTimeout = setTimeout(() => {
+                info.classList.add('hidden');
+            }, 3000); // Hide after 3 seconds of inactivity
+        }
+        
+        const algorithms = [
+            'Floyd-Steinberg',
+            'Jarvis-Judice-Ninke',
+            'Atkinson',
+            'Stucki',
+            'Burkes',
+            'Bayer'
+        ];
+        
+        const pixelSizes = [1, 2, 4, 8, 16, 32];
+        
+        // Matrix definitions for different dithering algorithms
+        const matrices = {
+            'Floyd-Steinberg': [
+                [0, 0, 7/16],
+                [3/16, 5/16, 1/16]
+            ],
+            'Jarvis-Judice-Ninke': [
+                [0, 0, 0, 7/48, 5/48],
+                [3/48, 5/48, 7/48, 5/48, 3/48],
+                [1/48, 3/48, 5/48, 3/48, 1/48]
+            ],
+            'Atkinson': [
+                [0, 0, 1/8, 1/8],
+                [1/8, 1/8, 1/8, 0],
+                [0, 1/8, 0, 0]
+            ],
+            'Stucki': [
+                [0, 0, 0, 8/42, 4/42],
+                [2/42, 4/42, 8/42, 4/42, 2/42],
+                [1/42, 2/42, 4/42, 2/42, 1/42]
+            ],
+            'Burkes': [
+                [0, 0, 0, 8/32, 4/32],
+                [2/32, 4/32, 8/32, 4/32, 2/32]
+            ],
+            'Bayer': [
+                [0, 8, 2, 10],
+                [12, 4, 14, 6],
+                [3, 11, 1, 9],
+                [15, 7, 13, 5]
+            ]
+        };
+
+        // Initialize camera
+        async function initCamera() {
+            try {
+                video = document.getElementById('video');
+                const constraints = {
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
+                
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                
+                // Wait for video to be ready
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        resolve();
+                    };
+                });
+                
+                await video.play();
+                requestAnimationFrame(processFrame);
+                
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+            }
+        }
+
+        function ditherImage(imageData, algorithm) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const matrix = matrices[algorithm];
+            
+            // Create separate buffer for processing
+            const buffer = new Array(height).fill(0).map(() => 
+                new Array(width).fill(0).map(() => ({ r: 0, g: 0, b: 0 }))
+            );
+            
+            // Copy image data to buffer
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const i = (y * width + x) * 4;
+                    buffer[y][x] = {
+                        r: data[i],
+                        g: data[i + 1],
+                        b: data[i + 2]
+                    };
+                }
+            }
+
+            // Apply dithering
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const pixel = buffer[y][x];
+                    const channels = isColorMode ? ['r', 'g', 'b'] : ['r'];
+                    
+                    channels.forEach(channel => {
+                        const oldPixel = pixel[channel];
+                        const newPixel = oldPixel < 128 ? 0 : 255;
+                        const error = oldPixel - newPixel;
+                        
+                        pixel[channel] = newPixel;
+                        
+                        if (algorithm === 'Bayer') {
+                            // Bayer matrix threshold
+                            const threshold = (matrix[y % 4][x % 4] / 16) * 255;
+                            pixel[channel] = oldPixel < threshold ? 0 : 255;
+                        } else {
+                            // Error diffusion
+                            for (let i = 0; i < matrix.length; i++) {
+                                for (let j = 0; j < matrix[i].length; j++) {
+                                    const ny = y + i;
+                                    const nx = x + j - Math.floor(matrix[i].length / 2);
+                                    
+                                    if (ny < height && nx >= 0 && nx < width) {
+                                        buffer[ny][nx][channel] += error * matrix[i][j];
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // If not in color mode, copy R channel to G and B
+                    if (!isColorMode) {
+                        pixel.g = pixel.b = pixel.r;
+                    }
+                    
+                    // Write back to image data
+                    const i = (y * width + x) * 4;
+                    data[i] = pixel.r;
+                    data[i + 1] = pixel.g;
+                    data[i + 2] = pixel.b;
+                    data[i + 3] = 255;
+                }
+            }
+            
+            return imageData;
+        }
+
+        function processFrame() {
+            if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
+                const pixelSize = pixelSizes[currentPixelSizeIndex];
+                
+                // Draw at reduced resolution
+                const targetWidth = Math.floor(canvas.width / pixelSize);
+                const targetHeight = Math.floor(canvas.height / pixelSize);
+                
+                // Draw video frame
+                ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+                
+                // Get image data
+                const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+                
+                // Apply dithering
+                const processedImageData = ditherImage(imageData, algorithms[currentAlgoIndex]);
+                
+                // Clear canvas and draw processed image scaled up
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Create temporary canvas for scaling
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = targetWidth;
+                tempCanvas.height = targetHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.putImageData(processedImageData, 0, 0);
+                
+                // Draw scaled image with nearest-neighbor interpolation
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
+            }
+            
+            requestAnimationFrame(processFrame);
+        }
+
+        // Handle keyboard controls
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowLeft':
+                    currentAlgoIndex = (currentAlgoIndex - 1 + algorithms.length) % algorithms.length;
+                    infoAlgo.textContent = algorithms[currentAlgoIndex];
+                    showInfo();
+                    break;
+                case 'ArrowRight':
+                    currentAlgoIndex = (currentAlgoIndex + 1) % algorithms.length;
+                    infoAlgo.textContent = algorithms[currentAlgoIndex];
+                    showInfo();
+                    break;
+                case 'ArrowUp':
+                    currentPixelSizeIndex = Math.min(currentPixelSizeIndex + 1, pixelSizes.length - 1);
+                    infoPixel.textContent = pixelSizes[currentPixelSizeIndex] + 'x';
+                    showInfo();
+                    break;
+                case 'ArrowDown':
+                    currentPixelSizeIndex = Math.max(currentPixelSizeIndex - 1, 0);
+                    infoPixel.textContent = pixelSizes[currentPixelSizeIndex] + 'x';
+                    showInfo();
+                    break;
+            }
+        });
+
+// Handle touch controls
+let touchStartX = 0;
+let touchStartY = 0;
+let touchStartTime = 0;
+
+canvas.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchStartTime = Date.now();
+});
+
+canvas.addEventListener('touchend', (e) => {
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+    const touchEndTime = Date.now();
+    
+    const deltaX = touchEndX - touchStartX;
+    const deltaY = touchEndY - touchStartY;
+    const deltaTime = touchEndTime - touchStartTime;
+    
+    // If the touch duration is less than 300ms and movement is minimal, consider it a tap
+    if (deltaTime < 300 && Math.abs(deltaX) < 20 && Math.abs(deltaY) < 20) {
+        // Tap - toggle color mode
+        isColorMode = !isColorMode;
+        infoColor.textContent = isColorMode ? 'RGB' : 'B&W';
+        showInfo();
+    } else if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+        // Horizontal swipe - require more movement (50px)
+        if (deltaX > 0) {
+            currentAlgoIndex = (currentAlgoIndex + 1) % algorithms.length;
+        } else {
+            currentAlgoIndex = (currentAlgoIndex - 1 + algorithms.length) % algorithms.length;
+        }
+        infoAlgo.textContent = algorithms[currentAlgoIndex];
+        showInfo();
+    } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
+        // Vertical swipe - require more movement (50px)
+        if (deltaY > 0) {
+            currentPixelSizeIndex = Math.max(currentPixelSizeIndex - 1, 0);
+        } else {
+            currentPixelSizeIndex = Math.min(currentPixelSizeIndex + 1, pixelSizes.length - 1);
+        }
+        infoPixel.textContent = pixelSizes[currentPixelSizeIndex] + 'x';
+        showInfo();
+    }
+});
+
+        // Handle mouse click for color mode toggle
+        canvas.addEventListener('click', () => {
+            isColorMode = !isColorMode;
+            infoColor.textContent = isColorMode ? 'RGB' : 'B&W';
+            showInfo();
+        });
+
+        // Prevent default touch behaviors
+        canvas.addEventListener('touchmove', (e) => e.preventDefault());
+
+        // Show info initially
+        showInfo();
+
+        // Start the app
+        initCamera();
+    </script>
+</body>
+</html>
