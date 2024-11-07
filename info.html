@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>dither.it</title>
+    
+    <link rel="icon" type="image/png" href="/src/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/src/favicon.svg" />
+    <link rel="shortcut icon" href="/src/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/src/apple-touch-icon.png" />
+    <link rel="manifest" href="/src/site.webmanifest" />
+
+    <meta property="og:title" content="dither.it" />
+    <meta property="og:description" content="Realtime Camera Dithering" />
+    <meta property="og:image" content="/src/social-card.png" />
+    <meta property="og:url" content="https://dither.it" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="dither.it" />
+    <meta name="twitter:description" content="Realtime Camera Dithering" />
+    <meta name="twitter:image" content="/src/social-card.png" /> 
+
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: black;
+            touch-action: none;
+        }
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        #video, #canvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #video {
+            opacity: 0;
+        }
+        #info, #welcome {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-family: sans-serif;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 100;
+            text-align: center;
+        }
+        #info {
+            top: 20px;
+        }
+        #welcome {
+            top: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 80%;
+            line-height: 1.5;
+        }
+        .show-info {
+            opacity: 1 !important;
+        }
+        #welcome h1 {
+            margin: 0 0 10px 0;
+            font-size: 24px;
+        }
+        #welcome h2 {
+            margin: 0 0 20px 0;
+            font-size: 16px;
+            font-weight: normal;
+            opacity: 0.8;
+        }
+        #welcome p {
+            margin: 10px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+        <div id="info">Floyd-Steinberg | 1x | B&W</div>
+        <div id="welcome">
+            <h1>Dither It</h1>
+            <h2>Realtime Camera Dithering</h2>
+            <p>Change Dither Algorithm<br>Left / Right Swipe or Arrows</p>
+            <p>Change Dither Density<br>Up / Down Swipe or Arrows</p>
+            <p>Black & White / RGB Mode<br>Tap or Click</p>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const info = document.getElementById('info');
+        const ctx = canvas.getContext('2d');
+        let animationId;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let currentAlgorithmIndex = 0;
+        let currentScale = 16;
+        let lastKeyPressTime = 0;
+        let isColorMode = true;
+        
+        const bayerMatrix = [
+            [ 0, 8, 2, 10],
+            [12, 4, 14, 6],
+            [ 3, 11, 1, 9],
+            [15, 7, 13, 5]
+        ];
+
+        const algorithms = [
+            {
+                name: "Floyd-Steinberg",
+                type: "error",
+                weights: [
+                    [0, 0, 7/16],
+                    [3/16, 5/16, 1/16]
+                ]
+            },
+            {
+                name: "Jarvis-Judice-Ninke",
+                type: "error",
+                weights: [
+                    [0, 0, 0, 7/48, 5/48],
+                    [3/48, 5/48, 7/48, 5/48, 3/48],
+                    [1/48, 3/48, 5/48, 3/48, 1/48]
+                ]
+            },
+            {
+                name: "Atkinson",
+                type: "error",
+                weights: [
+                    [0, 0, 1/8, 1/8],
+                    [1/8, 1/8, 1/8, 0],
+                    [0, 1/8, 0, 0]
+                ]
+            },
+            {
+                name: "Stucki",
+                type: "error",
+                weights: [
+                    [0, 0, 0, 8/42, 4/42],
+                    [2/42, 4/42, 8/42, 4/42, 2/42],
+                    [1/42, 2/42, 4/42, 2/42, 1/42]
+                ]
+            },
+            {
+                name: "Burkes",
+                type: "error",
+                weights: [
+                    [0, 0, 0, 8/32, 4/32],
+                    [2/32, 4/32, 8/32, 4/32, 2/32]
+                ]
+            },
+            {
+                name: "Bayer",
+                type: "ordered"
+            }
+        ];
+
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                video.play();
+
+                function resize() {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                }
+                window.addEventListener('resize', resize);
+                resize();
+
+                // Show welcome message
+                const welcome = document.getElementById('welcome');
+                welcome.classList.add('show-info');
+                setTimeout(() => welcome.classList.remove('show-info'), 5000);
+
+                processFrame();
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                alert("Please allow camera access to use app");
+            }
+        }
+
+        function showInfo() {
+            info.textContent = `${algorithms[currentAlgorithmIndex].name} | ${currentScale}x | ${isColorMode ? 'RGB' : 'B&W'}`;
+            info.classList.add('show-info');
+            setTimeout(() => info.classList.remove('show-info'), 2000);
+        }
+
+        function applyBayerDithering(data, width, height) {
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    if (isColorMode) {
+                        [0, 1, 2].forEach(offset => {
+                            const val = data[idx + offset];
+                            const threshold = (bayerMatrix[y % 4][x % 4] / 16) * 255;
+                            data[idx + offset] = val < threshold ? 0 : 255;
+                        });
+                    } else {
+                        const gray = data[idx];
+                        const threshold = (bayerMatrix[y % 4][x % 4] / 16) * 255;
+                        const newPixel = gray < threshold ? 0 : 255;
+                        data[idx] = data[idx + 1] = data[idx + 2] = newPixel;
+                    }
+                }
+            }
+        }
+
+        function applyErrorDiffusion(data, width, height, weights) {
+            const buffer = new Array(height).fill(0).map(() => 
+                new Array(width).fill(0).map(() => ({ r: 0, g: 0, b: 0 }))
+            );
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    buffer[y][x] = {
+                        r: data[idx],
+                        g: data[idx + 1],
+                        b: data[idx + 2]
+                    };
+                }
+            }
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const channels = isColorMode ? ['r', 'g', 'b'] : ['r'];
+                    
+                    channels.forEach(channel => {
+                        const oldPixel = buffer[y][x][channel];
+                        const newPixel = oldPixel < 128 ? 0 : 255;
+                        const error = oldPixel - newPixel;
+                        buffer[y][x][channel] = newPixel;
+                        
+                        for (let i = 0; i < weights.length; i++) {
+                            for (let j = 0; j < weights[i].length; j++) {
+                                const weight = weights[i][j];
+                                if (weight === 0) continue;
+                                
+                                const px = x + j - Math.floor(weights[i].length / 2);
+                                const py = y + i;
+                                
+                                if (px >= 0 && px < width && py < height) {
+                                    buffer[py][px][channel] += error * weight;
+                                }
+                            }
+                        }
+                    });
+
+                    if (!isColorMode) {
+                        buffer[y][x].g = buffer[y][x].b = buffer[y][x].r;
+                    }
+                }
+            }
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    data[idx] = buffer[y][x].r;
+                    data[idx + 1] = buffer[y][x].g;
+                    data[idx + 2] = buffer[y][x].b;
+                }
+            }
+        }
+
+        function processFrame() {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const scale = currentScale;
+            const scaledWidth = Math.floor(canvas.width / scale);
+            const scaledHeight = Math.floor(canvas.height / scale);
+            
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = scaledWidth;
+            tempCanvas.height = scaledHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(canvas, 0, 0, scaledWidth, scaledHeight);
+            
+            const imageData = tempCtx.getImageData(0, 0, scaledWidth, scaledHeight);
+            const data = imageData.data;
+            
+            if (!isColorMode) {
+                for (let i = 0; i < data.length; i += 4) {
+                    const gray = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+                    data[i] = data[i + 1] = data[i + 2] = gray;
+                }
+            }
+
+            const algorithm = algorithms[currentAlgorithmIndex];
+            
+            if (algorithm.type === "ordered") {
+                applyBayerDithering(data, scaledWidth, scaledHeight);
+            } else {
+                applyErrorDiffusion(data, scaledWidth, scaledHeight, algorithm.weights);
+            }
+            
+            tempCtx.putImageData(imageData, 0, 0);
+            
+            ctx.imageSmoothingEnabled = false;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
+            
+            animationId = requestAnimationFrame(processFrame);
+        }
+
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+            const diffX = touchEndX - touchStartX;
+            const diffY = touchEndY - touchStartY;
+            
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                if (Math.abs(diffX) > 50) {
+                    if (diffX > 0) {
+                        currentAlgorithmIndex = (currentAlgorithmIndex + 1) % algorithms.length;
+                    } else {
+                        currentAlgorithmIndex = (currentAlgorithmIndex - 1 + algorithms.length) % algorithms.length;
+                    }
+                    showInfo();
+                }
+            } else {
+                if (Math.abs(diffY) > 50) {
+                    if (diffY < 0) {
+                        currentScale = currentScale === 64 ? 1 : currentScale * 2;
+                    } else {
+                        currentScale = currentScale === 1 ? 64 : currentScale / 2;
+                    }
+                    showInfo();
+                }
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            isColorMode = !isColorMode;
+            showInfo();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            const now = Date.now();
+            if (now - lastKeyPressTime < 100) return;
+            lastKeyPressTime = now;
+            
+            switch(e.key) {
+                case 'ArrowRight':
+                    currentAlgorithmIndex = (currentAlgorithmIndex + 1) % algorithms.length;
+                    showInfo();
+                    break;
+                case 'ArrowLeft':
+                    currentAlgorithmIndex = (currentAlgorithmIndex - 1 + algorithms.length) % algorithms.length;
+                    showInfo();
+                    break;
+                case 'ArrowUp':
+                    currentScale = currentScale === 64 ? 1 : currentScale * 2;
+                    showInfo();
+                    break;
+                case 'ArrowDown':
+                    currentScale = currentScale === 1 ? 64 : currentScale / 2;
+                    showInfo();
+                    break;
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => e.preventDefault());
+
+        initCamera();
+    </script>
+</body>
+</html>
