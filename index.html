@@ -196,7 +196,7 @@
         }
 
         function showInfo() {
-            info.textContent = `${algorithms[currentAlgorithmIndex].name} | ${currentScale}x | ${isColorMode ? 'RGB' : 'B&W'}`;
+            info.textContent = `${algorithms[currentAlgorithmIndex].name} — ${currentScale}× — ${isColorMode ? 'RGB' : 'B&W'}`;
             info.classList.add('show-info');
             setTimeout(() => info.classList.remove('show-info'), 2000);
         }
