@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>dither.camera</title>
+    
+    <!-- Add TensorFlow.js and COCO-SSD -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: black;
+            touch-action: none;
+        }
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        #video, #canvas, #detectionCanvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #video {
+            opacity: 0;
+        }
+        #detectionCanvas {
+            pointer-events: none;
+        }
+        #info, #welcome {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-family: sans-serif;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 100;
+            text-align: center;
+        }
+        #info {
+            top: 20px;
+        }
+        #welcome {
+            top: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 80%;
+            line-height: 1.5;
+        }
+        .show-info {
+            opacity: 1 !important;
+        }
+        #welcome p {
+            margin: 10px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+        <canvas id="detectionCanvas"></canvas>
+        <div id="info">Floyd-Steinberg | 4x | B&W</div>
+        <div id="welcome">
+            <p>Dither Method<br>Left / Right</p>
+            <p>Pixel Density<br>Up / Down</p>
+            <p>Color Mode<br>Tap / Click</p>
+        </div>
+    </div>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const detectionCanvas = document.getElementById('detectionCanvas');
+const info = document.getElementById('info');
+const ctx = canvas.getContext('2d');
+const detectionCtx = detectionCanvas.getContext('2d');
+
+let model = null;
+let animationId;
+let touchStartX = 0;
+let touchStartY = 0;
+let currentAlgorithmIndex = 5;
+let currentScale = 16;
+let lastKeyPressTime = 0;
+let colorMode = 'bw'; // 'bw' or 'rgb'
+
+const validScales = [4, 8, 16, 32, 64];
+
+// Your existing algorithms and matrices
+const bayerMatrix = [
+    [ 0, 12,  3, 15],
+    [ 8,  4, 11,  7],
+    [ 2, 14,  1, 13],
+    [10,  6,  9,  5]
+];
+
+const algorithms = [
+    {
+        name: "Floyd-Steinberg",
+        type: "error",
+        weights: [
+            [0, 0, 7/16],
+            [3/16, 5/16, 1/16]
+        ]
+    },
+    {
+        name: "Jarvis-Judice-Ninke",
+        type: "error",
+        weights: [
+            [0, 0, 0, 7/48, 5/48],
+            [3/48, 5/48, 7/48, 5/48, 3/48],
+            [1/48, 3/48, 5/48, 3/48, 1/48]
+        ]
+    },
+    {
+        name: "Atkinson",
+        type: "error",
+        weights: [
+            [0, 0, 1/8, 1/8],
+            [1/8, 1/8, 1/8, 0],
+            [0, 1/8, 0, 0]
+        ]
+    },
+    {
+        name: "Stucki",
+        type: "error",
+        weights: [
+            [0, 0, 0, 8/42, 4/42],
+            [2/42, 4/42, 8/42, 4/42, 2/42],
+            [1/42, 2/42, 4/42, 2/42, 1/42]
+        ]
+    },
+    {
+        name: "Burkes",
+        type: "error",
+        weights: [
+            [0, 0, 0, 8/32, 4/32],
+            [2/32, 4/32, 8/32, 4/32, 2/32]
+        ]
+    },
+    {
+        name: "Bayer",
+        type: "ordered"
+    }
+];
+
+function applyBayerDithering(data, width, height) {
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4;
+            if (colorMode === 'rgb') {
+                [0, 1, 2].forEach(offset => {
+                    const val = data[idx + offset];
+                    const threshold = (bayerMatrix[y % 4][x % 4] / 16) * 255;
+                    data[idx + offset] = val < threshold ? 0 : 255;
+                });
+            } else {
+                const gray = data[idx];
+                const threshold = (bayerMatrix[y % 4][x % 4] / 16) * 255;
+                const newPixel = gray < threshold ? 0 : 255;
+                data[idx] = data[idx + 1] = data[idx + 2] = newPixel;
+            }
+        }
+    }
+}
+
+function applyErrorDiffusion(data, width, height, weights) {
+    const buffer = new Array(height).fill(0).map(() => 
+        new Array(width).fill(0).map(() => ({ r: 0, g: 0, b: 0 }))
+    );
+    
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4;
+            buffer[y][x] = {
+                r: data[idx],
+                g: data[idx + 1],
+                b: data[idx + 2]
+            };
+        }
+    }
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const channels = colorMode === 'rgb' ? ['r', 'g', 'b'] : ['r'];
+            channels.forEach(channel => {
+                const oldPixel = buffer[y][x][channel];
+                const newPixel = oldPixel < 128 ? 0 : 255;
+                const error = oldPixel - newPixel;
+                buffer[y][x][channel] = newPixel;
+                
+                for (let i = 0; i < weights.length; i++) {
+                    for (let j = 0; j < weights[i].length; j++) {
+                        const weight = weights[i][j];
+                        if (weight === 0) continue;
+                        
+                        const px = x + j - Math.floor(weights[i].length / 2);
+                        const py = y + i;
+                        
+                        if (px >= 0 && px < width && py < height) {
+                            buffer[py][px][channel] += error * weight;
+                        }
+                    }
+                }
+            });
+
+            if (colorMode === 'bw') {
+                buffer[y][x].g = buffer[y][x].b = buffer[y][x].r;
+            }
+        }
+    }
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4;
+            data[idx] = buffer[y][x].r;
+            data[idx + 1] = buffer[y][x].g;
+            data[idx + 2] = buffer[y][x].b;
+            data[idx + 3] = 255;
+        }
+    }
+}
+
+async function initCamera() {
+    try {
+        // Load COCO-SSD model
+        console.log('Loading detection model...');
+        model = await cocoSsd.load();
+        console.log('Model loaded successfully');
+
+        // Initialize camera
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        video.play();
+
+        function resize() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            detectionCanvas.width = width;
+            detectionCanvas.height = height;
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Show welcome message
+        const welcome = document.getElementById('welcome');
+        welcome.classList.add('show-info');
+        setTimeout(() => welcome.classList.remove('show-info'), 5000);
+
+        // Start processing frames
+        processFrame();
+        
+    } catch (err) {
+        console.error("Error:", err);
+        alert("Please allow camera access to use app");
+    }
+}
+
+async function processFrame() {
+    // Original dithering process
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    const scale = currentScale;
+    const scaledWidth = Math.floor(canvas.width / scale);
+    const scaledHeight = Math.floor(canvas.height / scale);
+    
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = scaledWidth;
+    tempCanvas.height = scaledHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(canvas, 0, 0, scaledWidth, scaledHeight);
+    
+    const imageData = tempCtx.getImageData(0, 0, scaledWidth, scaledHeight);
+    const data = imageData.data;
+    
+    if (colorMode !== 'rgb') {
+        for (let i = 0; i < data.length; i += 4) {
+            const gray = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+            data[i] = data[i + 1] = data[i + 2] = gray;
+        }
+    }
+
+    const algorithm = algorithms[currentAlgorithmIndex];
+    
+    if (algorithm.type === "ordered") {
+        applyBayerDithering(data, scaledWidth, scaledHeight);
+    } else {
+        applyErrorDiffusion(data, scaledWidth, scaledHeight, algorithm.weights);
+    }
+    
+    tempCtx.putImageData(imageData, 0, 0);
+    
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
+
+// Update the detection drawing code
+if (model) {
+    try {
+        const predictions = await model.detect(video);
+        detectionCtx.clearRect(0, 0, detectionCanvas.width, detectionCanvas.height);
+        
+        predictions.forEach(prediction => {
+            const [x, y, width, height] = prediction.bbox;
+            
+            // Align to pixel grid
+            const alignedX = Math.floor(x / scale) * scale;
+            const alignedY = Math.floor(y / scale) * scale;
+            const alignedWidth = Math.floor(width / scale) * scale;
+            const alignedHeight = Math.floor(height / scale) * scale;
+            
+            // Thicker stroke
+            const strokeWidth = 36;
+            detectionCtx.strokeStyle = '#5a00e6';
+            detectionCtx.lineWidth = strokeWidth;
+            detectionCtx.strokeRect(alignedX, alignedY, alignedWidth, alignedHeight);
+            
+            // Draw label with background matching example
+            const text = `${prediction.class}`;
+            detectionCtx.font = '16px sans-serif';
+            const textWidth = detectionCtx.measureText(text).width;
+            const padding = 8;
+            const textBgWidth = textWidth + (padding * 0);
+            const textBgHeight = 24;
+            const textX = alignedX;
+            const textY = alignedY - textBgHeight - 0;
+            
+            // Draw text
+            detectionCtx.fillStyle = '#ffffff';
+            detectionCtx.fillText(text, textX + padding, textY + 28); // 17 for vertical centering
+        });
+    } catch (err) {
+        console.error('Detection error:', err);
+    }
+}
+    
+    animationId = requestAnimationFrame(processFrame);
+}
+
+function adjustScale(increase) {
+    const currentIndex = validScales.indexOf(currentScale);
+    if (increase && currentIndex < validScales.length - 1) {
+        currentScale = validScales[currentIndex + 1];
+    } else if (!increase && currentIndex > 0) {
+        currentScale = validScales[currentIndex - 1];
+    }
+    showInfo();
+}
+
+function showInfo() {
+    const modeText = colorMode === 'rgb' ? 'RGB' : 'B&W';
+    info.textContent = `${algorithms[currentAlgorithmIndex].name} | ${currentScale}x | ${modeText}`;
+    info.classList.add('show-info');
+    clearTimeout(infoTimeout); // Clear any existing timeout
+    infoTimeout = setTimeout(() => info.classList.remove('show-info'), 2000);
+}
+
+let infoTimeout;
+
+// Your existing event listeners with modified scale adjustment
+canvas.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+});
+
+canvas.addEventListener('touchend', (e) => {
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+    const diffX = touchEndX - touchStartX;
+    const diffY = touchEndY - touchStartY;
+    
+    if (Math.abs(diffX) > Math.abs(diffY)) {
+        if (Math.abs(diffX) > 50) {
+            if (diffX > 0) {
+                currentAlgorithmIndex = (currentAlgorithmIndex + 1) % algorithms.length;
+            } else {
+                currentAlgorithmIndex = (currentAlgorithmIndex - 1 + algorithms.length) % algorithms.length;
+            }
+            showInfo();
+        }
+    } else {
+        if (Math.abs(diffY) > 50) {
+            adjustScale(diffY < 0);
+        }
+    }
+});
+
+canvas.addEventListener('click', () => {
+    colorMode = colorMode === 'bw' ? 'rgb' : 'bw';
+    showInfo();
+});
+
+document.addEventListener('keydown', (e) => {
+    const now = Date.now();
+    if (now - lastKeyPressTime < 100) return;
+    lastKeyPressTime = now;
+    
+    switch(e.key) {
+        case 'ArrowRight':
+            currentAlgorithmIndex = (currentAlgorithmIndex + 1) % algorithms.length;
+            showInfo();
+            break;
+        case 'ArrowLeft':
+            currentAlgorithmIndex = (currentAlgorithmIndex - 1 + algorithms.length) % algorithms.length;
+            showInfo();
+            break;
+        case 'ArrowUp':
+            adjustScale(true);
+            showInfo();
+            break;
+        case 'ArrowDown':
+            adjustScale(false);
+            showInfo();
+            break;
+    }
+});
+
+canvas.addEventListener('touchmove', (e) => e.preventDefault());
+
+initCamera();
+</script>
+</body>
+</html>
