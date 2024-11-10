@@ -18,4 +18,5 @@
    @@@@@@@@@@@@@@@            @@@@@@@@@@@@@@@@@@@@    @@@        @@@@@@@@@@     
       @@@@@@@@                @@@@@@@@@@@@@@@@@@@@               @@@@@@@@@@     
 ```
-# Dither It - Realtime Camera Dithering
+# Dither It
+Realtime Camera Dithering
