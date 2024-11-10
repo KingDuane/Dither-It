@@ -343,7 +343,8 @@ if (model) {
             detectionCtx.strokeRect(alignedX, alignedY, alignedWidth, alignedHeight);
             
             // Update label position with scaled coordinates
-            const text = `${prediction.class}`;
+            const percentage = Math.round(prediction.score * 100);
+            const text = `${prediction.class} ${percentage}%`;
             detectionCtx.font = '16px sans-serif';
             const textWidth = detectionCtx.measureText(text).width;
             const padding = 0;
