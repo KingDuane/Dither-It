@@ -89,6 +89,7 @@ const detectionCanvas = document.getElementById('detectionCanvas');
 const info = document.getElementById('info');
 const ctx = canvas.getContext('2d');
 const detectionCtx = detectionCanvas.getContext('2d');
+const CONFIDENCE_THRESHOLD = 0.10;
 
 let model = null;
 let animationId;
@@ -314,6 +315,7 @@ async function processFrame() {
 
 if (model) {
     try {
+        const CONFIDENCE_THRESHOLD = 0.50; // 50% confidence threshold
         const predictions = await model.detect(video);
         detectionCtx.clearRect(0, 0, detectionCanvas.width, detectionCanvas.height);
         
@@ -321,41 +323,44 @@ if (model) {
         const scaleX = canvas.width / video.videoWidth;
         const scaleY = canvas.height / video.videoHeight;
         
-        predictions.forEach(prediction => {
-            const [x, y, width, height] = prediction.bbox;
-            
-            // Scale coordinates to match canvas size
-            const scaledX = x * scaleX;
-            const scaledY = y * scaleY;
-            const scaledWidth = width * scaleX;
-            const scaledHeight = height * scaleY;
-            
-            // Align to pixel grid
-            const alignedX = Math.floor(scaledX / scale) * scale;
-            const alignedY = Math.floor(scaledY / scale) * scale;
-            const alignedWidth = Math.floor(scaledWidth / scale) * scale;
-            const alignedHeight = Math.floor(scaledHeight / scale) * scale;
-            
-            // Rest of your detection drawing code...
-            const strokeWidth = 32;
-            detectionCtx.strokeStyle = '#5a00e6';
-            detectionCtx.lineWidth = strokeWidth;
-            detectionCtx.strokeRect(alignedX, alignedY, alignedWidth, alignedHeight);
-            
-            // Update label position with scaled coordinates
-            const percentage = Math.round(prediction.score * 100);
-            const text = `${prediction.class} ${percentage}%`;
-            detectionCtx.font = '16px sans-serif';
-            const textWidth = detectionCtx.measureText(text).width;
-            const padding = 0;
-            const textBgWidth = textWidth + (padding * 2);
-            const textBgHeight = -4;
-            const textX = alignedX;
-            const textY = alignedY - textBgHeight - 0;
-            
-            detectionCtx.fillStyle = '#ffffff';
-            detectionCtx.fillText(text, textX + padding, textY + 0);
-        });
+        // Filter predictions by confidence threshold
+        predictions
+            .filter(prediction => prediction.score >= CONFIDENCE_THRESHOLD)
+            .forEach(prediction => {
+                const [x, y, width, height] = prediction.bbox;
+                
+                // Scale coordinates to match canvas size
+                const scaledX = x * scaleX;
+                const scaledY = y * scaleY;
+                const scaledWidth = width * scaleX;
+                const scaledHeight = height * scaleY;
+                
+                // Align to pixel grid
+                const alignedX = Math.floor(scaledX / scale) * scale;
+                const alignedY = Math.floor(scaledY / scale) * scale;
+                const alignedWidth = Math.floor(scaledWidth / scale) * scale;
+                const alignedHeight = Math.floor(scaledHeight / scale) * scale;
+                
+                // Rest of your detection drawing code...
+                const strokeWidth = 32;
+                detectionCtx.strokeStyle = '#5a00e6';
+                detectionCtx.lineWidth = strokeWidth;
+                detectionCtx.strokeRect(alignedX, alignedY, alignedWidth, alignedHeight);
+                
+                // Update label position with scaled coordinates
+                const percentage = Math.round(prediction.score * 100);
+                const text = `${prediction.class} ${percentage}%`;
+                detectionCtx.font = '16px sans-serif';
+                const textWidth = detectionCtx.measureText(text).width;
+                const padding = 0;
+                const textBgWidth = textWidth + (padding * 2);
+                const textBgHeight = -4;
+                const textX = alignedX;
+                const textY = alignedY - textBgHeight - 0;
+                
+                detectionCtx.fillStyle = '#ffffff';
+                detectionCtx.fillText(text, textX + padding, textY + 0);
+            });
     } catch (err) {
         console.error('Detection error:', err);
     }
