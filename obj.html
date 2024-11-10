@@ -98,11 +98,10 @@ let touchStartY = 0;
 let currentAlgorithmIndex = 5;
 let currentScale = 16;
 let lastKeyPressTime = 0;
-let colorMode = 'bw'; // 'bw' or 'rgb'
+let colorMode = 'bw';
 
 const validScales = [4, 8, 16, 32, 64];
 
-// Your existing algorithms and matrices
 const bayerMatrix = [
     [ 0, 12,  3, 15],
     [ 8,  4, 11,  7],
@@ -276,7 +275,7 @@ async function initCamera() {
 }
 
 async function processFrame() {
-    // Original dithering process
+
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
     const scale = currentScale;
@@ -350,7 +349,7 @@ if (model) {
                 // Update label position with scaled coordinates
                 const percentage = Math.round(prediction.score * 100);
                 const text = `${prediction.class} ${percentage}%`;
-                detectionCtx.font = '16px sans-serif';
+                detectionCtx.font = '14px sans-serif';
                 const textWidth = detectionCtx.measureText(text).width;
                 const padding = 0;
                 const textBgWidth = textWidth + (padding * 2);
@@ -383,13 +382,12 @@ function showInfo() {
     const modeText = colorMode === 'rgb' ? 'RGB' : 'B&W';
     info.textContent = `${algorithms[currentAlgorithmIndex].name} | ${currentScale}x | ${modeText}`;
     info.classList.add('show-info');
-    clearTimeout(infoTimeout); // Clear any existing timeout
+    clearTimeout(infoTimeout);
     infoTimeout = setTimeout(() => info.classList.remove('show-info'), 2000);
 }
 
 let infoTimeout;
 
-// Your existing event listeners with modified scale adjustment
 canvas.addEventListener('touchstart', (e) => {
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
