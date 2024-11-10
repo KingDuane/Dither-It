@@ -396,7 +396,7 @@ function adjustScale(increase) {
 
 function showInfo() {
     const modeText = colorMode === 'rgb' ? 'RGB' : 'B&W';
-    info.textContent = `${algorithms[currentAlgorithmIndex].name} | ${currentScale}x | ${modeText}`;
+    info.textContent = `${algorithms[currentAlgorithmIndex].name} — ${currentScale}× — ${modeText}`;
     info.classList.add('show-info');
     clearTimeout(infoTimeout);
     infoTimeout = setTimeout(() => info.classList.remove('show-info'), 2000);
